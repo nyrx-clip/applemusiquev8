@@ -1190,7 +1190,7 @@ body {
         </div>
         <div class="section" id="home-recents">
           <div class="section-hd">
-            <div class="section-title">Récemment ajoutés</div>
+            <div class="section-title">Récemment joués</div>
             <div class="section-more" onclick="nav('library')">Voir tout</div>
           </div>
           <div class="hscroll" id="home-recent-row"></div>
@@ -1292,6 +1292,7 @@ body {
           <h3>Glisse tes fichiers ici</h3>
           <p>MP3, FLAC, WAV, AAC, M4A, AIFF, OGG, OPUS<br>Et vidéos : MP4, MKV, WebM, MOV</p>
           <input type="file" id="file-inp" multiple accept="audio/*,video/*,.mp3,.flac,.wav,.aac,.m4a,.m4b,.ogg,.opus,.aiff,.aif,.wma,.mp4,.mkv,.webm,.mov,.avi" style="display:none">
+          <input type="file" id="pl-cover-inp" accept="image/*" style="display:none">
           <button class="upload-btn" onclick="document.getElementById('file-inp').click()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Choisir des fichiers
@@ -1744,6 +1745,10 @@ async function playById(trackId, resetQ=true) {
   updateTrackHighlights();
   updateQueueUI();
   saveSession();
+  // Track last played
+  track.lastPlayed = Date.now();
+  dbPut(STORE_TRACKS, track).catch(()=>{});
+  renderHome();
   // Restart lyrics sync
   if (lrcInterval) { cancelAnimationFrame(lrcInterval); lrcInterval = null; }
   if ($('fp-lyrics').classList.contains('open')) renderLyrics();
@@ -2500,10 +2505,13 @@ function renderHome() {
   const g = h<12?'Bonjour':h<18?'Bonne après-midi':'Bonsoir';
   $('home-greeting').textContent = g + ' 👋';
 
-  const sorted = [...library].sort((a,b)=>b.dateAdded-a.dateAdded).slice(0,12);
+  const sorted = [...library].sort((a,b)=>{
+    const ap = a.lastPlayed||0, bp = b.lastPlayed||0;
+    return bp - ap;
+  }).slice(0,12);
   $('home-recent-row').innerHTML = sorted.length
     ? sorted.map(t=>cardHTML(t)).join('')
-    : `<div style="color:var(--text3);font-size:13px;padding:10px 0;align-self:center">Importe de la musique →</div>`;
+    : `<div style="color:var(--text3);font-size:13px;padding:10px 0;align-self:center">Joue une musique →</div>`;
 
   const favs = library.filter(t=>t.favorite).slice(0,12);
   $('home-fav-section').style.display = favs.length?'block':'none';
@@ -2643,7 +2651,7 @@ function renderPlaylists() {
   $('playlists-list').innerHTML = playlists.length
     ? playlists.map(pl=>{
         const tracks=pl.trackIds.map(id=>library.find(t=>t.id===id)).filter(Boolean);
-        const artUrl=tracks[0]?blobURLs[tracks[0].id]?.artURL:null;
+  const artUrl=pl.coverURL||(tracks[0]?blobURLs[tracks[0].id]?.artURL:null);
         const art=artUrl?`<img src="${artUrl}" alt="" style="width:100%;height:100%;object-fit:cover">`:
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:44%;height:44%;opacity:0.35"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/></svg>`;
         return `<div class="titem" onclick="openPlaylistDetail('${pl.id}')">
@@ -2669,7 +2677,7 @@ function renderSidebarPlaylists() {
   sec.style.display = playlists.length ? 'block' : 'none';
   $('sb-playlists').innerHTML = playlists.map(pl=>{
     const t=pl.trackIds.length?library.find(x=>x.id===pl.trackIds[0]):null;
-    const artUrl=t?blobURLs[t.id]?.artURL:null;
+    const artUrl=pl.coverURL||(t?blobURLs[t.id]?.artURL:null);
     return `<div class="sb-item" onclick="openPlaylistDetail('${pl.id}')">
       <div class="pl-thumb">${artUrl?`<img src="${artUrl}" alt="">`:'♫'}</div>
       <span class="lbl">${esc(pl.name)}</span>
@@ -2739,7 +2747,7 @@ function openPlaylistDetail(plId) {
   if (!pl) return;
   const tracks=pl.trackIds.map(id=>library.find(t=>t.id===id)).filter(Boolean);
   $('pd-hd-title').textContent=pl.name;
-  const artUrl=tracks[0]?blobURLs[tracks[0].id]?.artURL:null;
+  const artUrl=pl.coverURL||(tracks[0]?blobURLs[tracks[0].id]?.artURL:null);
   const artEl=artUrl?`<img src="${artUrl}" alt="">`:
     `<div class="pd-art-ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg></div>`;
   const totalDur=tracks.reduce((s,t)=>s+(t.duration||0),0);
@@ -2812,7 +2820,7 @@ function cardHTML(t) {
 
 function playlistCardHTML(pl) {
   const tracks=pl.trackIds.map(id=>library.find(t=>t.id===id)).filter(Boolean);
-  const artUrl=tracks[0]?blobURLs[tracks[0].id]?.artURL:null;
+  const artUrl=pl.coverURL||(tracks[0]?blobURLs[tracks[0].id]?.artURL:null);
   const art=artUrl?`<img src="${artUrl}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover">`:
     `<div class="cthumb-ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/></svg></div>`;
   return `<div class="card album-card" onclick="openPlaylistDetail('${pl.id}')">
@@ -2876,7 +2884,7 @@ function openNewPlaylistModal() {
 async function createPlaylist(nameArg) {
   const n = nameArg || $('pl-name-inp')?.value?.trim();
   if (!n) { toast('⚠️ Donne un nom'); return; }
-  const pl = { id:'pl_'+Date.now(), name:n, trackIds:[], dateCreated:Date.now() };
+  const pl = { id:'pl_'+Date.now(), name:n, trackIds:[], dateCreated:Date.now(), coverURL:null };
   await dbPut(STORE_PL, pl);
   playlists.push(pl);
   closeModal();
@@ -2890,9 +2898,29 @@ function openPlaylistMenu(plId, event) {
     {label:'🔀 Aléatoire',action:()=>shufflePlaylist(plId)},
     'sep',
     {label:'✏️ Renommer',action:()=>renamePlaylistModal(plId)},
+    {label:'🖼 Changer la cover',action:()=>{ const inp=document.getElementById('pl-cover-inp'); inp.dataset.plId=plId; inp.click(); }},
     {label:'🗑️ Supprimer',cls:'red',action:()=>deletePlaylist(plId)},
   ]);
 }
+
+// Playlist cover upload
+document.addEventListener('change', function(e){
+  if(e.target.id!=='pl-cover-inp')return;
+  const file=e.target.files[0]; if(!file)return;
+  const plId=e.target.dataset.plId;
+  const pl=playlists.find(p=>p.id===plId);
+  if(!pl)return;
+  const reader=new FileReader();
+  reader.onload=async function(ev){
+    pl.coverURL=ev.target.result;
+    await dbPut(STORE_PL, pl);
+    renderPlaylists(); renderSidebarPlaylists(); renderHome();
+    if(document.getElementById('view-pdtail')?.classList.contains('active')) openPlaylistDetail(plId);
+    toast('🖼 Cover mise à jour');
+  };
+  reader.readAsDataURL(file);
+  e.target.value='';
+});
 
 function renamePlaylistModal(plId) {
   const pl=playlists.find(p=>p.id===plId);
